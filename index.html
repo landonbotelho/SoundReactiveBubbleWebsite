@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sound Reactive Bubble</title>
+
+  <!-- p5.js libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      overflow: hidden;
+      font-family: Arial, Helvetica, sans-serif;
+      background: rgb(4, 5, 54);
+      color: white;
+    }
+
+    #infoPanel {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      z-index: 10;
+      max-width: 360px;
+      padding: 18px 20px;
+      border-radius: 18px;
+      background: rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+    }
+
+    p {
+      font-size: 0.95rem;
+      line-height: 1.45;
+      opacity: 0.9;
+      margin-bottom: 14px;
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      font-weight: bold;
+      cursor: pointer;
+      color: white;
+      background: linear-gradient(135deg, rgb(255, 0, 220), rgb(120, 80, 255));
+      box-shadow: 0 8px 20px rgba(255, 0, 220, 0.25);
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: default;
+      transform: none;
+    }
+
+    #statusText {
+      margin-top: 12px;
+      font-size: 0.85rem;
+      opacity: 0.75;
+    }
+
+    #credit {
+      position: fixed;
+      right: 22px;
+      bottom: 18px;
+      z-index: 10;
+      font-size: 0.8rem;
+      opacity: 0.65;
+    }
+  </style>
+</head>
+<body>
+  <div id="infoPanel">
+    <h1>Sound Reactive Bubble</h1>
+    <p>
+      This interactive p5.js sketch uses audio input to grow and distort a 3D wireframe bubble.
+      Louder sound creates a larger, more intense wobble effect.
+    </p>
+    <button id="startButton">Start Audio</button>
+    <div id="statusText">Click start, then allow microphone access.</div>
+  </div>
+
+  <div id="credit">Drag with mouse to rotate the bubble</div>
+
+  <script>
+    let mic;
+    let micStarted = false;
+
+    let lastMicLevel = 0;
+    let time = 0;
+
+    // Number of lines drawn vertically and horizontally within sphere
+    let rings = 50;
+    let slices = 50;
+
+    const startButton = document.getElementById("startButton");
+    const statusText = document.getElementById("statusText");
+
+    startButton.addEventListener("click", startAudioInput);
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight, WEBGL);
+      mic = new p5.AudioIn();
+    }
+
+    function draw() {
+      // Navy blue background color
+      background(4, 5, 54);
+
+      // Allows mouse to move sphere
+      orbitControl();
+
+      time += 0.015;
+
+      // Smooths microphone input
+      let currentMicLevel = getMicLevel();
+      lastMicLevel = lerp(lastMicLevel, currentMicLevel, 0.25);
+
+      let baseRadius = min(width, height) * 0.3;
+
+      let growth = map(lastMicLevel, 0, 0.06, 1, 1.65, true);
+
+      // lastMicLevel, input min, input max, output min, output max, clamp values within range
+      let wobbleAmount = map(lastMicLevel, 0, 0.1, 8, 300, true);
+
+      // Constantly rotates the bubble
+      rotateY(time * 0.45);
+      rotateX(sin(time * 0.5) * 0.25);
+
+      drawBubble(baseRadius * growth, wobbleAmount);
+    }
+
+    function startAudioInput() {
+      userStartAudio();
+      mic.start(
+        function () {
+          micStarted = true;
+          startButton.disabled = true;
+          startButton.textContent = "Audio Started";
+          statusText.textContent = "Audio is active. Play sound or speak near your input device.";
+        },
+        function () {
+          statusText.textContent = "Microphone access was blocked. Please allow audio input and refresh.";
+        }
+      );
+    }
+
+    function getMicLevel() {
+      if (!micStarted) return 0;
+      return mic.getLevel();
+    }
+
+    function drawBubble(radius, wobbleAmount) {
+      // Creates wireframe-like appearance
+      noFill();
+      stroke(255, 0, 220, 180);
+      strokeWeight(1);
+
+      // Instantiates rings one by one with corresponding slices
+      for (let r = 0; r < rings; r++) {
+        // Sets up rings around the entire sphere vertically and spaces them out
+        let theta1 = map(r, 0, rings, 0, PI);
+        let theta2 = map(r + 1, 0, rings, 0, PI);
+
+        // Connects vertices with triangular shapes
+        beginShape(TRIANGLE_STRIP);
+
+        // Instantiates slices
+        for (let s = 0; s <= slices; s++) {
+          // Sets up slices around the entire sphere horizontally and spaces them out
+          let phi = map(s, 0, slices, 0, TWO_PI);
+
+          // Instantiates and adjusts vertices based on Perlin wobble amount driven by noise
+          let p1 = getBubblePoint(theta1, phi, radius, wobbleAmount);
+          let p2 = getBubblePoint(theta2, phi, radius, wobbleAmount);
+
+          // Places vertices in mesh
+          vertex(p1.x, p1.y, p1.z);
+          vertex(p2.x, p2.y, p2.z);
+        }
+
+        endShape();
+      }
+    }
+
+    // Smoothly adjusts the bubble shape
+    function getBubblePoint(theta, phi, radius, wobbleAmount) {
+      // Finds direction vector on the sphere
+      let xDirection = sin(theta) * cos(phi);
+      let yDirection = cos(theta);
+      let zDirection = sin(theta) * sin(phi);
+
+      // Accounts for Perlin noise
+      let n1 = noise(
+        xDirection * 1.4 + 10,
+        yDirection * 1.4 + 20,
+        zDirection * 1.4 + time
+      );
+
+      let n2 = noise(
+        xDirection * 3.2 + 40,
+        yDirection * 3.2 + 50,
+        zDirection * 3.2 + time * 1.5
+      );
+
+      // Adds wobble amount
+      let blob = map(n1, 0, 1, -wobbleAmount, wobbleAmount);
+      let detail = map(n2, 0, 1, -wobbleAmount * 0.5, wobbleAmount * 0.5);
+
+      // Places the point on the sphere based on direction vector, radius, and two layers of Perlin noise
+      let finalRadius = radius + blob + detail;
+
+      return createVector(
+        xDirection * finalRadius,
+        yDirection * finalRadius * 0.9,
+        zDirection * finalRadius
+      );
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+    }
+  </script>
+</body>
+</html>
